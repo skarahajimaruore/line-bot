@@ -1,4 +1,4 @@
-require('dotenv').config(); // ← 必須！
+require('dotenv').config(); // ← 必須！あ
 const vision = require('@google-cloud/vision');
 const fs = require('fs');
 const express = require('express');
