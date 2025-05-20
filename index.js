@@ -7,6 +7,7 @@ const config = {
 };
 
 const app = express();
+app.use(express.json()); 
 app.use(middleware(config));
 
 const client = new Client(config);
