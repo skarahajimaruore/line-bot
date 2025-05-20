@@ -13,10 +13,12 @@ app.use(middleware(config));
 const client = new Client(config);
 
 app.post('/webhook', (req, res) => {
+    console.log("✅ Webhook受信:", JSON.stringify(req.body, null, 2));  
   Promise.all(req.body.events.map(handleEvent)).then((result) => res.json(result));
 });
 
 function handleEvent(event) {
+   console.log("📨 イベント詳細:", JSON.stringify(event, null, 2)); // ← 追加
   if (event.type !== 'message' || event.message.type !== 'text') return Promise.resolve(null);
   return client.replyMessage(event.replyToken, {
     type: 'text',
