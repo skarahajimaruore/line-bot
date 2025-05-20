@@ -1,120 +1,80 @@
-require('dotenv').config(); // ← 必須！あ
-const vision = require('@google-cloud/vision');
-const fs = require('fs');
+// =======================================================
+// LINE × Cloud Vision Bot  ― 修正済み完全版
+// ・ファイルパス方式で鍵ファイルを読む
+// ・LINE 署名検証を壊さないミドルウェア順序
+// ・Render のヘルスチェック用ルートを追加
+// =======================================================
+
+require('dotenv').config();
 const express = require('express');
-
 const { Client, middleware } = require('@line/bot-sdk');
+const vision = require('@google-cloud/vision');
 
-// Vision API の認証情報を環境変数から読み込み
-const credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
-const visionClient = new vision.ImageAnnotatorClient({ credentials });
-
-const config = {
-  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
-  channelSecret: process.env.LINE_CHANNEL_SECRET
-};
-
-const app = express();
-app.use(express.json()); 
-app.use(middleware(config));
-
-const client = new Client(config);
-
-app.post('/webhook', (req, res) => {
-  console.log("\u2705 Webhook受信:", JSON.stringify(req.body, null, 2));  
-  Promise.all(req.body.events.map(handleEvent))
-    .then((result) => res.json(result))
-    .catch((err) => {
-      console.error("\u274C イベント処理中にエラー:", err);
-      res.status(500).end();
-    });
+// ---------- Google Cloud Vision クライアント ----------
+// .env 例:  GOOGLE_APPLICATION_CREDENTIALS=./credentials.json
+const visionClient = new vision.ImageAnnotatorClient({
+  keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS || './credentials.json'
 });
 
-function handleEvent(event) {
-  console.log("\ud83d\udce8 イベント詳細:", JSON.stringify(event, null, 2));
-  if (event.type !== 'message') return Promise.resolve(null);
+// ---------- LINE Bot 設定 ----------
+const config = {
+  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
+  channelSecret:      process.env.LINE_CHANNEL_SECRET
+};
+const client = new Client(config);
 
-  // 位置 QuickReply
+// ---------- Express アプリ ----------
+const app = express();
+
+/**
+ * Health Check 用 (Render が / をポーリングするため)
+ * これが無くても動くが、ログが綺麗になる
+ */
+app.get('/', (_, res) => res.sendStatus(200));
+
+/**
+ * Webhook
+ * 1. middleware(config) で署名を検証
+ * 2. 署名 OK なリクエストだけ通す
+ */
+app.post('/webhook', middleware(config), async (req, res) => {
+  try {
+    const results = await Promise.all(req.body.events.map(handleEvent));
+    res.json(results);
+  } catch (err) {
+    console.error('❌ イベント処理中にエラー:', err);
+    res.status(500).end();
+  }
+});
+
+// ---------- イベント処理 ----------
+async function handleEvent(event) {
+  console.log('📨 受信イベント:', JSON.stringify(event, null, 2));
+
+  if (event.type !== 'message') return null;
+
+  // --- 位置情報リクエスト ---
   if (event.message.type === 'text' && event.message.text === '位置') {
     return client.replyMessage(event.replyToken, {
-      type: "text",
-      text: "近くのおすすめを紹介します！\n現在地を送ってください\ud83d\udccd",
+      type: 'text',
+      text: '近くのおすすめを紹介します！\n現在地を送ってください📍',
       quickReply: {
         items: [
           {
-            type: "action",
-            action: {
-              type: "location",
-              label: "現在地を送る"
-            }
+            type: 'action',
+            action: { type: 'location', label: '現在地を送る' }
           }
         ]
       }
     });
   }
 
-  // 画像処理（Vision APIでランドマーク検出）
+  // --- 画像メッセージ：ランドマーク検出 ---
   if (event.message.type === 'image') {
-    const messageId = event.message.id;
-
-    return client.getMessageContent(messageId)
-      .then((stream) => {
-        return new Promise((resolve, reject) => {
-          const chunks = [];
-          stream.on('data', (chunk) => chunks.push(chunk));
-          stream.on('end', async () => {
-            try {
-              const imageBuffer = Buffer.concat(chunks);
-              console.log("\u2705 画像バッファ取得完了:", imageBuffer.length, "bytes");
-
-              const [result] = await visionClient.landmarkDetection({ image: { content: imageBuffer } });
-              const landmarks = result.landmarkAnnotations;
-
-              if (landmarks.length > 0) {
-                const landmark = landmarks[0];
-                const name = landmark.description;
-                const location = landmark.locations[0]?.latLng;
-
-                let replyText = `この写真は「${name}」っぽいですね！\ud83d\udccd`;
-                if (location) {
-                  replyText += `\n緯度: ${location.latitude}, 経度: ${location.longitude}`;
-                  replyText += `\n地図: https://www.google.com/maps?q=${location.latitude},${location.longitude}`;
-                }
-
-                await client.replyMessage(event.replyToken, {
-                  type: 'text',
-                  text: replyText
-                });
-              } else {
-                await client.replyMessage(event.replyToken, {
-                  type: 'text',
-                  text: 'ごめんね、場所を特定できなかったよ\ud83c\udf00'
-                });
-              }
-
-              resolve();
-            } catch (err) {
-              console.error("\u274C Vision API エラー:", err);
-              await client.replyMessage(event.replyToken, {
-                type: 'text',
-                text: '画像の解析に失敗しました…\ud83d\ude22'
-              });
-              resolve();
-            }
-          });
-          stream.on('error', reject);
-        });
-      })
-      .catch((err) => {
-        console.error("\u274C 画像取得エラー:", err);
-        return client.replyMessage(event.replyToken, {
-          type: 'text',
-          text: '画像の取得に失敗しました…もう一度送ってもらえますか？'
-        });
-      });
+    return handleImage(event);
   }
 
-  // 通常のテキスト返信（オウム返し）
+  // --- テキスト：オウム返し ---
   if (event.message.type === 'text') {
     return client.replyMessage(event.replyToken, {
       type: 'text',
@@ -122,8 +82,53 @@ function handleEvent(event) {
     });
   }
 
-  return Promise.resolve(null);
+  return null;
 }
 
-const port = process.env.PORT || 3000;
+// ---------- 画像処理関数 ----------
+async function handleImage(event) {
+  try {
+    const stream     = await client.getMessageContent(event.message.id);
+    const chunks     = [];
+    await new Promise((resolve, reject) => {
+      stream.on('data', chunk => chunks.push(chunk));
+      stream.on('end', resolve);
+      stream.on('error', reject);
+    });
+
+    const imageBuffer = Buffer.concat(chunks);
+    console.log('✅ 画像バッファ取得:', imageBuffer.length, 'bytes');
+
+    const [result]   = await visionClient.landmarkDetection({ image: { content: imageBuffer } });
+    const landmarks  = result.landmarkAnnotations;
+
+    if (landmarks.length === 0) {
+      return client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: 'ごめんね、場所を特定できなかったよ🌈'
+      });
+    }
+
+    const lm        = landmarks[0];
+    const name      = lm.description;
+    const location  = lm.locations[0]?.latLng;
+
+    let reply = `この写真は「${name}」っぽいですね！📍`;
+    if (location) {
+      reply += `\n緯度: ${location.latitude}, 経度: ${location.longitude}`;
+      reply += `\n地図: https://www.google.com/maps?q=${location.latitude},${location.longitude}`;
+    }
+
+    return client.replyMessage(event.replyToken, { type: 'text', text: reply });
+  } catch (err) {
+    console.error('❌ Vision API エラー:', err);
+    return client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: '画像の解析に失敗しました…😢'
+    });
+  }
+}
+
+// ---------- サーバ起動 ----------
+const port = process.env.PORT || 3000; // Render では自動で 10000 が入る
 app.listen(port, () => console.log(`Bot is running on ${port}`));
