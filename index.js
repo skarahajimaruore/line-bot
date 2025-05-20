@@ -41,7 +41,37 @@ function handleEvent(event) {
       }
     });
   }
+ // 画像を受け取ったとき
+  if (event.message.type === 'image') {
+    const messageId = event.message.id;
+    const filePath = `./images/${messageId}.jpg`;
 
+    return client.getMessageContent(messageId)
+      .then((stream) => {
+        return new Promise((resolve, reject) => {
+          const writable = fs.createWriteStream(filePath);
+          stream.pipe(writable);
+          stream.on('end', () => {
+            console.log(`✅ 画像を保存しました: ${filePath}`);
+            resolve();
+          });
+          stream.on('error', reject);
+        });
+      })
+      .then(() => {
+        return client.replyMessage(event.replyToken, {
+          type: 'text',
+          text: '画像を受け取りました！📸\nありがとうございます。'
+        });
+      })
+      .catch((err) => {
+        console.error("❌ 画像保存エラー:", err);
+        return client.replyMessage(event.replyToken, {
+          type: 'text',
+          text: '画像の保存に失敗しました…もう一度送ってもらえますか？'
+        });
+      });
+  }
   // その他のテキストメッセージ → オウム返し
   if (event.message.type === 'text') {
     return client.replyMessage(event.replyToken, {
