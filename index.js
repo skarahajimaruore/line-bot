@@ -1,4 +1,5 @@
-require('dotenv').config(); // ← 環境変数読み込み
+
+require('dotenv').config();
 const vision = require('@google-cloud/vision');
 const fs = require('fs'); 
 const express = require('express');
