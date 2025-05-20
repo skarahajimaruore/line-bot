@@ -1,3 +1,5 @@
+require('dotenv').config(); // ← これが必要！
+
 const express = require('express');
 const { Client, middleware } = require('@line/bot-sdk');
 
@@ -25,3 +27,4 @@ function handleEvent(event) {
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`Bot is running on ${port}`));
+
