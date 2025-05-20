@@ -1,8 +1,8 @@
-
-require('dotenv').config();
+require('dotenv').config(); // ← 必須！
 const vision = require('@google-cloud/vision');
-const fs = require('fs'); 
+const fs = require('fs');
 const express = require('express');
+
 const { Client, middleware } = require('@line/bot-sdk');
 
 // Vision API の認証情報を環境変数から読み込み
