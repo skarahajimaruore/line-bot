@@ -3,9 +3,8 @@ const fs = require('fs');
 const express = require('express');
 const { Client, middleware } = require('@line/bot-sdk');
 
-const visionClient = new vision.ImageAnnotatorClient({
-  keyFilename: './vision-key.json'
-});
+const credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+const visionClient = new vision.ImageAnnotatorClient({ credentials });
 
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
