@@ -1,3 +1,4 @@
+const fs = require('fs'); 
 const express = require('express');
 const { Client, middleware } = require('@line/bot-sdk');
 
@@ -14,7 +15,12 @@ const client = new Client(config);
 
 app.post('/webhook', (req, res) => {
     console.log("✅ Webhook受信:", JSON.stringify(req.body, null, 2));  
-  Promise.all(req.body.events.map(handleEvent)).then((result) => res.json(result));
+  Promise.all(req.body.events.map(handleEvent))
+    .then((result) => res.json(result))
+    .catch((err) => {
+      console.error("❌ イベント処理中にエラー:", err);
+      res.status(500).end();
+    });
 });
 
 function handleEvent(event) {
