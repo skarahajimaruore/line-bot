@@ -42,36 +42,40 @@ function handleEvent(event) {
     });
   }
  // 画像を受け取ったとき
-  if (event.message.type === 'image') {
-    const messageId = event.message.id;
-    const filePath = `./images/${messageId}.jpg`;
+if (event.message.type === 'image') {
+  const messageId = event.message.id;
 
-    return client.getMessageContent(messageId)
-      .then((stream) => {
-        return new Promise((resolve, reject) => {
-          const writable = fs.createWriteStream(filePath);
-          stream.pipe(writable);
-          stream.on('end', () => {
-            console.log(`✅ 画像を保存しました: ${filePath}`);
-            resolve();
-          });
-          stream.on('error', reject);
+  return client.getMessageContent(messageId)
+    .then((stream) => {
+      return new Promise((resolve, reject) => {
+        const chunks = [];
+        stream.on('data', (chunk) => chunks.push(chunk));
+        stream.on('end', () => {
+          const imageBuffer = Buffer.concat(chunks);
+
+          // ✅ ここで imageBuffer を使って画像解析・AI連携などできる
+          console.log("✅ 画像バッファ取得完了。サイズ:", imageBuffer.length, "bytes");
+
+          // 例：ここにGoogle Cloud Vision API、AWS Rekognitionなどの処理を書く
+
+          // ユーザーに返信
+          resolve(client.replyMessage(event.replyToken, {
+            type: 'text',
+            text: '画像を受け取って解析中です🔍'
+          }));
         });
-      })
-      .then(() => {
-        return client.replyMessage(event.replyToken, {
-          type: 'text',
-          text: '画像を受け取りました！📸\nありがとうございます。'
-        });
-      })
-      .catch((err) => {
-        console.error("❌ 画像保存エラー:", err);
-        return client.replyMessage(event.replyToken, {
-          type: 'text',
-          text: '画像の保存に失敗しました…もう一度送ってもらえますか？'
-        });
+        stream.on('error', reject);
       });
-  }
+    })
+    .catch((err) => {
+      console.error("❌ 画像取得エラー:", err);
+      return client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: '画像の取得に失敗しました…もう一度送ってもらえますか？'
+      });
+    });
+}
+
   // その他のテキストメッセージ → オウム返し
   if (event.message.type === 'text') {
     return client.replyMessage(event.replyToken, {
