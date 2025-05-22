@@ -1,0 +1,5 @@
+.env
+credentials.json
+vision-key1.json
+
+node_modules
