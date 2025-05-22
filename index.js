@@ -49,6 +49,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
 /* ---------- イベントハンドラ ---------- */
 async function handleEvent(event) {
+  console.log(event);
   if (event.type !== 'message') return null;
 
   // 位置情報クイックリプライ
